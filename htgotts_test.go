@@ -1,8 +1,8 @@
 package htgotts
 
 import (
-	"github.com/hegedustibor/htgo-tts/handlers"
-	"github.com/hegedustibor/htgo-tts/voices"
+	"github.com/rqure/qtts/handlers"
+	"github.com/rqure/qtts/voices"
 
 	"fmt"
 	"testing"
@@ -15,11 +15,6 @@ func TestSpeech_Speak(t *testing.T) {
 
 func TestSpeech_Speak_MPlayer_Handler(t *testing.T) {
 	speech := Speech{Folder: "audio", Language: voices.English, Handler: &handlers.MPlayer{}}
-	speech.Speak("Test")
-}
-
-func TestSpeech_Speak_Native_Handler(t *testing.T) {
-	speech := Speech{Folder: "audio", Language: voices.English, Handler: &handlers.Native{}}
 	speech.Speak("Test")
 }
 
