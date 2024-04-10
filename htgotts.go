@@ -1,4 +1,4 @@
-package htgotts
+package qtts
 
 import (
 	"crypto/md5"
