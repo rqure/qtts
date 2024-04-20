@@ -34,10 +34,7 @@ type Speech struct {
 func (speech *Speech) CreateSpeechFile(text string, fileName string) (string, error) {
 	var err error
 
-	f := speech.Folder + "/" + fileName + ".mp3"
-	if err = speech.createFolderIfNotExists(speech.Folder); err != nil {
-		return "", err
-	}
+	f := speech.Folder + fileName + ".mp3"
 
 	if err = speech.downloadIfNotExists(f, text); err != nil {
 		return "", err
