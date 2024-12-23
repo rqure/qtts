@@ -1,15 +1,15 @@
 package qtts
 
 import (
+	"context"
 	"crypto/md5"
-	"crypto/tls"
 	"encoding/hex"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"os"
+	"strings"
 
+	texttospeech "cloud.google.com/go/texttospeech/apiv1"
+	"cloud.google.com/go/texttospeech/apiv1/texttospeechpb"
 	"github.com/rqure/qtts/handlers"
 )
 
@@ -26,6 +26,7 @@ import (
 type Speech struct {
 	Folder   string
 	Language string
+	Voice    string
 	Proxy    string
 	Handler  handlers.PlayerInterface
 }
@@ -68,43 +69,53 @@ func (speech *Speech) Speak(text string) error {
 }
 
 /**
- * Create the folder if does not exists.
- */
-func (speech *Speech) createFolderIfNotExists(folder string) error {
-	dir, err := os.Open(folder)
-	if os.IsNotExist(err) {
-		return os.MkdirAll(folder, 0700)
-	}
-
-	dir.Close()
-	return nil
-}
-
-/**
  * Download the voice file if does not exists.
  */
 func (speech *Speech) downloadIfNotExists(fileName string, text string) error {
-	f, err := os.Open(fileName)
-	if err != nil {
-		dlURL := fmt.Sprintf("http://translate.google.com/translate_tts?ie=UTF-8&total=1&idx=0&textlen=32&client=tw-ob&q=%s&tl=%s", url.QueryEscape(text), speech.Language)
-
-		response, err := speech.urlResponse(dlURL, f)
-
-		if err != nil {
-			return err
-		}
-		defer response.Body.Close()
-
-		output, err := os.Create(fileName)
-		if err != nil {
-			return err
-		}
-
-		_, err = io.Copy(output, response.Body)
-		return err
+	// Check if the file already exists
+	if _, err := os.Stat(fileName); err == nil {
+		return nil
 	}
 
-	f.Close()
+	// Create a client for Google Text-to-Speech
+	ctx := context.Background()
+	client, err := texttospeech.NewClient(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create TTS client: %w", err)
+	}
+	defer client.Close()
+
+	// Set up the request
+	req := &texttospeechpb.SynthesizeSpeechRequest{
+		Input: &texttospeechpb.SynthesisInput{
+			InputSource: &texttospeechpb.SynthesisInput_Text{Text: text},
+		},
+		Voice: &texttospeechpb.VoiceSelectionParams{
+			LanguageCode: speech.Language,
+			SsmlGender:   parseGender(speech.Voice), // Parse the gender
+		},
+		AudioConfig: &texttospeechpb.AudioConfig{
+			AudioEncoding: texttospeechpb.AudioEncoding_MP3,
+		},
+	}
+
+	// Perform the TTS request
+	resp, err := client.SynthesizeSpeech(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to synthesize speech: %w", err)
+	}
+
+	// Write the audio content to the specified file
+	output, err := os.Create(fileName)
+	if err != nil {
+		return fmt.Errorf("failed to create file: %w", err)
+	}
+	defer output.Close()
+
+	if _, err = output.Write(resp.AudioContent); err != nil {
+		return fmt.Errorf("failed to write audio content to file: %w", err)
+	}
+
 	return nil
 }
 
@@ -113,26 +124,15 @@ func (speech *Speech) generateHashName(name string) string {
 	return fmt.Sprintf("%s_%s", speech.Language, hex.EncodeToString(hash[:]))
 }
 
-func (speech *Speech) urlResponse(dlUrl string, f *os.File) (resp *http.Response, err error) {
-	var (
-		response *http.Response
-	)
-
-	if speech.Proxy != "" {
-		var proxyURL *url.URL
-		proxyURL, err = url.Parse(speech.Proxy)
-
-		if err != nil {
-			return response, err
-		}
-
-		httpCli := &http.Client{Transport: &http.Transport{
-			Proxy:           http.ProxyURL(proxyURL),
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		}}
-
-		return httpCli.Get(dlUrl)
+// Helper function to parse gender from string to SSMLGender enum
+func parseGender(gender string) texttospeechpb.SsmlVoiceGender {
+	gender = strings.ToUpper(gender)
+	switch gender {
+	case "MALE":
+		return texttospeechpb.SsmlVoiceGender_MALE
+	case "FEMALE":
+		return texttospeechpb.SsmlVoiceGender_FEMALE
+	default:
+		return texttospeechpb.SsmlVoiceGender_NEUTRAL
 	}
-
-	return http.Get(dlUrl)
 }
